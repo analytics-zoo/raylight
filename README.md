@@ -5,6 +5,9 @@ Raylight. Using Ray Worker to manage multi GPU sampler setup. With XDiT-XFuser a
 *"Why buy 5090 when you can buy 2x5070s"-Komikndr*
 
 ## UPDATE
+- Kandinsky5 model
+- Fix FSDP error cause by Ray cannot pickle None type return by `comfy.supported_models_base.BASE.__getattr__`
+- TeaCache and EasyCache added thanks to [rmatif](https://github.com/rmatif/raylight/tree/easycache)
 - Flux2, Hunyuan 1.5 USP, FSDP
 - Fix broken tqdm progress bar
 - AMD ROCm Aiter attention
@@ -46,7 +49,7 @@ Raylight. Using Ray Worker to manage multi GPU sampler setup. With XDiT-XFuser a
 
 Raylight is a parallelism node for ComfyUI, where the tensor of an image or video sequence
 is split among GPU ranks. Raylight, as its partial namesake, uses [Ray](https://docs.ray.io/en/latest/ray-core/walkthrough.html)
-to manage its GPU workers.
+to manage its GPU workers. [Introduction to Raylight on Youtube](https://youtu.be/KQxrkJAV4eI?si=JHjZAKZ3RGBCtmFx)
 
 <img width="834" height="1276" alt="image" src="https://github.com/user-attachments/assets/6a79e980-1111-4e31-b6cb-7b6ff35eb766" />
 
@@ -211,6 +214,13 @@ Activate FSDP, and set the Ulysses degree to the number of GPUs. Use the XFuser 
 | Hunyuan Video     | ✅  | ✅   | ❌  |
 | Hunyuan 1.5       | ✅  | ✅   | ❌  |
 | ControlNet        | ❌  | ❌   | ❌  |
+
+
+**Kandinsky5**
+| Model             | USP | FSDP | CFG |
+|-------------------|-----|------|-----|
+| Kandinsky5 I2V    | ✅  | ❌   | ❌  |
+| Kandinsky5 T2V    | ✅  | ❌   | ❌  |
 
 
 **UNet**
