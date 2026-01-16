@@ -23,6 +23,7 @@ from raylight.distributed_modules.cfg import CFGParallelInjectRegistry
 
 from raylight.comfy_dist.sd import load_lora_for_models as ray_load_lora_for_models
 from raylight.distributed_worker.utils import Noise_EmptyNoise, Noise_RandomNoise, patch_ray_tqdm
+from raylight.comfy_dist.quant_ops import patch_temp_fix_ck_ops
 from ray.exceptions import RayActorError
 
 
@@ -48,6 +49,7 @@ class RayWorker:
         self.model_type = None
         self.state_dict = None
         self.parallel_dict = parallel_dict
+        self.overwrite_cast_dtype = None
 
         self.local_rank = local_rank
         self.global_world_size = self.parallel_dict["global_world_size"]
@@ -191,16 +193,19 @@ class RayWorker:
             from raylight.comfy_dist.model_patcher import LowVramPatch
 
             from raylight.comfy_dist.sd import fsdp_load_diffusion_model
-            from torch.distributed.fsdp import FSDPModule
 
             # Monkey patch
             model_patcher.LowVramPatch = LowVramPatch
             model_management.cleanup_models_gc = cleanup_models_gc
 
-            m = getattr(self.model, "model", None)
-            if m is not None and isinstance(getattr(m, "diffusion_model", None), FSDPModule):
-                del self.model
-                self.model = None
+            del self.model
+            del self.state_dict
+            self.model = None
+            self.state_dict = None
+            torch.cuda.synchronize()
+            comfy.model_management.soft_empty_cache()
+            gc.collect()
+
             self.model, self.state_dict = fsdp_load_diffusion_model(
                 unet_path,
                 self.local_rank,
@@ -208,14 +213,18 @@ class RayWorker:
                 self.is_cpu_offload,
                 model_options=model_options,
             )
+            torch.cuda.synchronize()
+            comfy.model_management.soft_empty_cache()
+            gc.collect()
         else:
             self.model = comfy.sd.load_diffusion_model(
-                unet_path, model_options=model_options,
+                unet_path, model_options={},
             )
 
         if self.lora_list is not None:
             self.load_lora()
 
+        self.overwrite_cast_dtype = self.model.model.manual_cast_dtype
         self.is_model_loaded = True
 
     def load_gguf_unet(self, unet_path, dequant_dtype, patch_dtype):
@@ -353,6 +362,7 @@ class RayWorker:
             )
         return images
 
+    @patch_temp_fix_ck_ops
     @patch_ray_tqdm
     def custom_sampler(
         self,
@@ -382,6 +392,11 @@ class RayWorker:
 
         if self.parallel_dict["is_fsdp"] is True:
             self.model.patch_fsdp()
+            del self.state_dict
+            self.state_dict = None
+            torch.cuda.synchronize()
+            comfy.model_management.soft_empty_cache()
+            gc.collect()
 
         disable_pbar = comfy.utils.PROGRESS_BAR_ENABLED
         if self.local_rank == 0:
@@ -412,6 +427,7 @@ class RayWorker:
         gc.collect()
         return out
 
+    @patch_temp_fix_ck_ops
     @patch_ray_tqdm
     def common_ksampler(
         self,
